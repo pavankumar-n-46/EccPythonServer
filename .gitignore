@@ -78,3 +78,7 @@ ipython_config.py
 
 # pyenv
 .python-version
+
+
+# PEM files
+*.pem
