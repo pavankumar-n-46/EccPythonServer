@@ -131,6 +131,63 @@ def encrypt():
         print(f"❌ Encryption failed: {e}")
         return jsonify({"error": f"Encryption failed: {str(e)}"}), 500
 
+@app.route('/verify', methods=['POST'])
+def verify():
+    try:
+        # Get the request data
+        data = request.json.get("data")
+        signature_base64 = request.json.get("signature")
+        public_key_base64 = request.json.get("publicKey")
+
+        print(f"\n🔹 Received Data: {data}")
+        print(f"🔹 Received Signature (Base64): {signature_base64}")
+        print(f"🔹 Received Public Key (Base64): {public_key_base64}")
+
+        # Decode the received public key (DER format)
+        public_key_bytes = base64.b64decode(public_key_base64)
+        print(f"🔹 Decoded Public Key Bytes (DER): {public_key_bytes.hex()}")
+
+        # Load the public key from the DER-encoded format
+        peer_public_key = serialization.load_der_public_key(public_key_bytes, backend=default_backend())
+        print(f"🔹 Loaded Public Key: {peer_public_key}")
+
+        # Decode the signature
+        signature_der = base64.b64decode(signature_base64)
+        print(f"🔹 Signature (DER Bytes): {signature_der.hex()}")
+
+        # Verify the signature using the received public key
+        peer_public_key.verify(
+            signature_der,
+            data.encode("utf-8"),
+            ec.ECDSA(hashes.SHA256())
+        )
+
+        print("✅ Signature verified successfully")
+        return jsonify({"status": "verified"})
+
+    except Exception as e:
+        print(f"❌ Signature verification failed: {e}")
+        return jsonify({"status": "failed", "error": str(e)}), 400
+
+@app.route('/sign', methods=['POST'])
+def sign_data():
+    try:
+        data = request.json.get('data')
+        print(f"\n🔹 Data to sign: {data}")
+
+        signature = private_key.sign(
+            data.encode('utf-8'),
+            ec.ECDSA(hashes.SHA256())
+        )
+
+        signature_b64 = b64encode(signature).decode('utf-8')
+        print(f"✅ Generated Signature (Base64): {signature_b64}")
+        return jsonify({"signature": signature_b64})
+
+    except Exception as e:
+        print(f"❌ Signing failed: {e}")
+        return jsonify({"error": "Signing failed", "details": str(e)}), 400
+
 @app.route('/decrypt', methods=['POST'])
 def decrypt():
     global shared_symmetric_key
