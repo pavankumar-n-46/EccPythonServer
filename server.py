@@ -5,6 +5,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.serialization import load_der_public_key
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 import os
 import base64
@@ -85,8 +86,6 @@ def exchange():
         print(f"❌ Error in /exchange: {e}")
         return jsonify({'error': str(e)}), 400
 
-@app.route('/verify', methods=['POST'])  
-
 @app.route('/verify', methods=['POST'])
 def verify():
     try:
@@ -143,6 +142,72 @@ def sign_data():
     except Exception as e:
         print(f"❌ Signing failed: {e}")
         return jsonify({"error": "Signing failed", "details": str(e)}), 400
+    
+@app.route('/encrypt', methods=['POST'])
+def encrypt():
+    global shared_symmetric_key
+    try:
+        if shared_symmetric_key is None:
+            print("❌ Encryption failed: Shared secret not established.")
+            return jsonify({"error": "Shared secret not established. Call /exchange first."}), 400
+
+        data = request.json.get("data")
+        print(f"\n🔹 Encrypting Data: {data}")
+
+        plaintext_bytes = data.encode('utf-8')
+
+        # Generate a 12-byte nonce for AES-GCM
+        nonce = os.urandom(12)
+        print(f"🔹 Generated Nonce (Base64): {b64encode(nonce).decode()}")
+
+        # Encrypt using AES-GCM
+        aesgcm = AESGCM(shared_symmetric_key)
+        ciphertext = aesgcm.encrypt(nonce, plaintext_bytes, None)
+
+        ciphertext_b64 = b64encode(ciphertext).decode('utf-8')
+        nonce_b64 = b64encode(nonce).decode('utf-8')
+
+        print(f"✅ Encrypted Ciphertext (Base64): {ciphertext_b64}")
+        print(f"✅ Encrypted Nonce (Base64): {nonce_b64}")
+
+        response = {
+            "ciphertext": ciphertext_b64,
+            "nonce": nonce_b64
+        }
+        return jsonify(response)
+
+    except Exception as e:
+        print(f"❌ Encryption failed: {e}")
+        return jsonify({"error": f"Encryption failed: {str(e)}"}), 500
+
+@app.route('/decrypt', methods=['POST'])
+def decrypt():
+    global shared_symmetric_key
+    try:
+        if shared_symmetric_key is None:
+            print("❌ Decryption failed: Shared secret not established.")
+            return jsonify({"error": "Shared secret not established. Call /exchange first."}), 400
+
+        ciphertext_b64 = request.json.get("ciphertext")
+        nonce_b64 = request.json.get("nonce")
+
+        print(f"\n🔹 Received Ciphertext (Base64): {ciphertext_b64}")
+        print(f"🔹 Received Nonce (Base64): {nonce_b64}")
+
+        ciphertext = b64decode(ciphertext_b64)
+        nonce = b64decode(nonce_b64)
+
+        # Decrypt using AES-GCM
+        aesgcm = AESGCM(shared_symmetric_key)
+        plaintext_bytes = aesgcm.decrypt(nonce, ciphertext, None)
+        plaintext = plaintext_bytes.decode('utf-8')
+
+        print(f"✅ Decrypted Plaintext: {plaintext}")
+        return jsonify({"plaintext": plaintext})
+
+    except Exception as e:
+        print(f"❌ Decryption failed: {e}")
+        return jsonify({"error": f"Decryption failed: {str(e)}"}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
