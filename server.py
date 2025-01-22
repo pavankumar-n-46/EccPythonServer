@@ -108,15 +108,22 @@ def encrypt():
         aesgcm = AESGCM(shared_symmetric_key)
         ciphertext = aesgcm.encrypt(nonce, plaintext_bytes, None)
 
+        # Extract the tag (last 16 bytes)
+        tag = ciphertext[-16:]
+        ciphertext = ciphertext[:-16]
+
         ciphertext_b64 = b64encode(ciphertext).decode('utf-8')
         nonce_b64 = b64encode(nonce).decode('utf-8')
+        tag_b64 = b64encode(tag).decode('utf-8')
 
         print(f"✅ Encrypted Ciphertext (Base64): {ciphertext_b64}")
         print(f"✅ Encrypted Nonce (Base64): {nonce_b64}")
+        print(f"✅ Encrypted Tag (Base64): {tag_b64}")
 
         response = {
             "ciphertext": ciphertext_b64,
-            "nonce": nonce_b64
+            "nonce": nonce_b64,
+            "tag": tag_b64  # Send the tag
         }
         return jsonify(response)
 
@@ -132,18 +139,26 @@ def decrypt():
             print("❌ Decryption failed: Shared secret not established.")
             return jsonify({"error": "Shared secret not established. Call /exchange first."}), 400
 
+        # Get the ciphertext, nonce, and tag from request
         ciphertext_b64 = request.json.get("ciphertext")
         nonce_b64 = request.json.get("nonce")
+        tag_b64 = request.json.get("tag")  # 🔹 Ensure tag is sent from iOS
 
         print(f"\n🔹 Received Ciphertext (Base64): {ciphertext_b64}")
         print(f"🔹 Received Nonce (Base64): {nonce_b64}")
+        print(f"🔹 Received Tag (Base64): {tag_b64}")
 
+        # Decode from Base64
         ciphertext = b64decode(ciphertext_b64)
         nonce = b64decode(nonce_b64)
+        tag = b64decode(tag_b64)
+
+        # AES-GCM in Python requires ciphertext + tag to be concatenated
+        ciphertext_with_tag = ciphertext + tag
 
         # Decrypt using AES-GCM
         aesgcm = AESGCM(shared_symmetric_key)
-        plaintext_bytes = aesgcm.decrypt(nonce, ciphertext, None)
+        plaintext_bytes = aesgcm.decrypt(nonce, ciphertext_with_tag, None)
         plaintext = plaintext_bytes.decode('utf-8')
 
         print(f"✅ Decrypted Plaintext: {plaintext}")
